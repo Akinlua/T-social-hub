@@ -25,7 +25,7 @@ class _PlatformViewState extends State<PlatformView> {
   String _currentPlatform = '';
   bool _fullscreen = false;
   Offset _buttonPosition = const Offset(16, 16); // Default position top-right
-  WebViewController? _currentController;
+  late WebViewController _currentController;
   bool _isShowingError = false;
   String _lastPlatform = '';
   static const String SCROLL_POSITION_KEY = 'scroll_position';
@@ -54,7 +54,7 @@ class _PlatformViewState extends State<PlatformView> {
           NavigationDelegate(
             onPageFinished: (String url) {
               if (scrollPosition != null) {
-                _currentController?.runJavaScript(
+                _currentController.runJavaScript(
                   'window.scrollTo(0, $scrollPosition);'
                 );
               }
@@ -113,17 +113,23 @@ class _PlatformViewState extends State<PlatformView> {
               _handleFacebookPage(_controllers[platformName.toLowerCase()]!);
             }
           },
-          // onWebResourceError: (WebResourceError error) {
-          //   if (!_isShowingError) {
-          //     setState(() {
-          //       _isLoading = false;
-          //     });
-          //     _showErrorWidget();
-          //   }
-          // },
+          onWebResourceError: (WebResourceError error) async {
+            if (_isShowingError) return;
+            
+            await Future.delayed(const Duration(seconds: 2));
+            
+            // if (mounted && (
+            //     error.errorType == WebResourceErrorType.hostLookup ||
+            //     error.errorType == WebResourceErrorType.unknown)) {
+            //   setState(() {
+            //     _isLoading = false;
+            //   });
+            //   _showErrorWidget();
+            // }
+          },
         ));
 
-      // Platform specific initialization
+      // Special handling for Facebook initialization
       if (platformName.toLowerCase() == 'facebook') {
         controller
           ..setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1')
@@ -137,10 +143,7 @@ class _PlatformViewState extends State<PlatformView> {
       _controllers[platformName.toLowerCase()] = controller;
     }
     
-    setState(() {
-      _currentController = _controllers[platformName.toLowerCase()];
-      _lastPlatform = platformName;
-    });
+    _currentController = _controllers[platformName.toLowerCase()]!;
   }
 
   void _handleFacebookPage(WebViewController controller) {
@@ -233,7 +236,7 @@ class _PlatformViewState extends State<PlatformView> {
                       onPressed: () {
                         Navigator.pop(context);
                         _isShowingError = false;
-                        _currentController?.reload();
+                        _currentController.reload();
                       },
                       child: const Text('Try Again'),
                     ),
@@ -317,60 +320,87 @@ class _PlatformViewState extends State<PlatformView> {
     }
   }
 
-  Future<bool> _handleBackPressed() async {
-    if (_currentController != null) {
-      try {
-        // Check if we're on the main feed/home page
-        final currentUrl = await _currentController!.currentUrl() ?? '';
-        final isMainPage = _isMainPage(currentUrl);
-        
-        // If we can go back and not on main page, navigate back
-        final canGoBack = await _currentController!.canGoBack();
-        if (canGoBack && !isMainPage) {
-          _currentController!.goBack();
-          return false; // Don't close the app
-        }
-      } catch (e) {
-        // Handle any potential errors
-        print('Error handling back navigation: $e');
-      }
-    }
-    return true; // Allow closing the app
-  }
-
-  bool _isMainPage(String url) {
-    final platform = widget.platformName.toLowerCase();
-    switch (platform) {
-      case 'instagram':
-        return url.contains('instagram.com') && !url.contains('/p/') && 
-               !url.contains('/reels/') && !url.contains('/stories/');
-      case 'facebook':
-        return url.contains('m.facebook.com/home') || url == 'https://m.facebook.com/';
-      case 'twitter/x':
-        return url == 'https://mobile.twitter.com/' || url == 'https://mobile.twitter.com/home';
-      case 'linkedin':
-        return url == 'https://www.linkedin.com/' || url == 'https://www.linkedin.com/feed/';
-      case 'tiktok':
-        return url == 'https://www.tiktok.com/' || url == 'https://www.tiktok.com/foryou';
-      default:
-        return false;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        // Show loading indicator immediately
+        if (_isLoading)
+          const Center(
+            child: CircularProgressIndicator(),
+          ),
+        
+        // Content below loading indicator
+        _buildContent(),
+      ],
+    );
+  }
+
+  Widget _buildContent() {
+    // Show loading state immediately when platform changes
+    if (widget.platformName != _lastPlatform) {
+      _isLoading = true;
+      _lastPlatform = widget.platformName;
+    }
+
     return WillPopScope(
-      onWillPop: _handleBackPressed,
+      onWillPop: () async {
+        if (await _currentController.canGoBack()) {
+          _currentController.goBack();
+          return false;
+        }
+        return true;
+      },
       child: Stack(
         children: [
-          if (_isLoading)
-            const Center(
-              child: CircularProgressIndicator(),
+          if (_showWebView)
+            SafeArea(
+              child: WebViewWidget(controller: _currentController),
             ),
-          if (_currentController != null)
-            WebViewWidget(
-              controller: _currentController!,
+          Positioned(
+            left: _buttonPosition.dx,
+            top: _buttonPosition.dy,
+            child: Draggable(
+              feedback: FloatingActionButton(
+                mini: true,
+                backgroundColor: Colors.black.withOpacity(0.5),
+                child: Icon(
+                  _fullscreen ? Icons.fullscreen_exit : Icons.fullscreen,
+                  color: Colors.white,
+                ),
+                onPressed: null,
+              ),
+              childWhenDragging: Container(),
+              onDragEnd: (details) {
+                setState(() {
+                  _buttonPosition = Offset(
+                    details.offset.dx
+                        .clamp(0, MediaQuery.of(context).size.width - 40),
+                    details.offset.dy
+                        .clamp(0, MediaQuery.of(context).size.height - 40),
+                  );
+                });
+              },
+              child: FloatingActionButton(
+                mini: true,
+                backgroundColor: Colors.black.withOpacity(0.5),
+                child: Icon(
+                  _fullscreen ? Icons.fullscreen_exit : Icons.fullscreen,
+                  color: Colors.white,
+                ),
+                onPressed: () {
+                  setState(() {
+                    _fullscreen = !_fullscreen;
+                  });
+                  if (mounted) {
+                    context
+                        .findAncestorStateOfType<SocialHubHomeState>()
+                        ?.toggleBars(_fullscreen);
+                  }
+                },
+              ),
             ),
+          ),
         ],
       ),
     );
