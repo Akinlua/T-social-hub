@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:letsgo/main.dart';
 import 'dart:io' show Platform;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:letsgo/services/native_app_launcher.dart';
 
 class PlatformView extends StatefulWidget {
   final String platformName;
@@ -108,37 +109,27 @@ class _PlatformViewState extends State<PlatformView> {
             });
             _enableCaching(_controllers[platformName.toLowerCase()]!);
             
-            // Special handling for Facebook
             if (platformName.toLowerCase() == 'facebook') {
               _handleFacebookPage(_controllers[platformName.toLowerCase()]!);
             }
           },
-          onWebResourceError: (WebResourceError error) async {
-            if (_isShowingError) return;
-            
-            await Future.delayed(const Duration(seconds: 2));
-            
-            // if (mounted && (
-            //     error.errorType == WebResourceErrorType.hostLookup ||
-            //     error.errorType == WebResourceErrorType.unknown)) {
-            //   setState(() {
-            //     _isLoading = false;
-            //   });
-            //   _showErrorWidget();
-            // }
+          onNavigationRequest: (NavigationRequest request) {
+            // Allow all navigation requests including OAuth
+            return NavigationDecision.navigate;
           },
-        ));
+        ))
+        ..setOnConsoleMessage((JavaScriptConsoleMessage message) {
+          print('WebView Console: ${message.message}');
+        });
 
-      // Special handling for Facebook initialization
-      if (platformName.toLowerCase() == 'facebook') {
-        controller
-          ..setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1')
-          ..loadRequest(Uri.parse('https://m.facebook.com/home.php'));
-      } else {
-        controller
-          ..setUserAgent('Mozilla/5.0 (Linux; Android 12; SM-S908B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36')
-          ..loadRequest(Uri.parse(_getUrl(platformName)));
-      }
+      // Update user agent to include more browser-like capabilities
+      final userAgent = platformName.toLowerCase() == 'facebook' 
+        ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1'
+        : 'Mozilla/5.0 (Linux; Android 12; SM-S908B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36 SocialHub/1.0';
+
+      controller
+        ..setUserAgent(userAgent)
+        ..loadRequest(Uri.parse(_getUrl(platformName)));
 
       _controllers[platformName.toLowerCase()] = controller;
     }
@@ -263,8 +254,28 @@ class _PlatformViewState extends State<PlatformView> {
     
     _currentPlatform = widget.platformName;
     
-    if (widget.platformName.toLowerCase() == 'whatsapp') {
-      _launchWhatsApp();
+    final appConfig = {
+      'instagram': 'com.instagram.android',
+      'facebook': 'com.facebook.katana',
+      'twitter/x': 'com.twitter.android',
+      'linkedin': 'com.linkedin.android',
+      'tiktok': 'com.zhiliaoapp.musically',
+      'whatsapp': 'com.whatsapp',
+    };
+
+    final packageName = appConfig[widget.platformName.toLowerCase()];
+    
+    if (packageName != null) {
+      NativeAppLauncher.launchNativeApp(packageName).then((success) {
+        if (!success) {
+          // Fallback to web view if app launch fails
+          setState(() {
+            _isLoading = true;
+            _showWebView = true;
+          });
+          _initializeController(widget.platformName);
+        }
+      });
       return;
     }
 
@@ -272,52 +283,7 @@ class _PlatformViewState extends State<PlatformView> {
       _isLoading = true;
       _showWebView = true;
     });
-
     _initializeController(widget.platformName);
-    
-    setState(() {
-      _isLoading = false;
-    });
-  }
-
-  Future<void> _launchWhatsApp() async {
-    setState(() {
-      _showWebView = false;
-      _isLoading = false;
-    });
-
-    if (Platform.isAndroid) {
-      try {
-        final intent = AndroidIntent(
-          action: 'android.intent.action.VIEW',
-          package: 'com.whatsapp',
-          componentName: 'com.whatsapp.HomeActivity',
-          flags: [
-            0x10000000, // FLAG_ACTIVITY_NEW_TASK
-            0x00080000, // FLAG_ACTIVITY_NEW_DOCUMENT
-            0x08000000, // FLAG_ACTIVITY_CLEAR_TASK
-            0x00400000, // FLAG_ACTIVITY_RETAIN_IN_RECENTS
-          ],
-        );
-        await intent.launch();
-      } catch (e) {
-        final playStoreIntent = AndroidIntent(
-          action: 'action_view',
-          data: 'market://details?id=com.whatsapp',
-        );
-        await playStoreIntent.launch();
-      }
-    } else if (Platform.isIOS) {
-      final url = Uri.parse('whatsapp://');
-      if (await canLaunchUrl(url)) {
-        await launchUrl(url);
-      } else {
-        // If WhatsApp is not installed, open App Store
-        final appStoreUrl = Uri.parse(
-            'https://apps.apple.com/app/whatsapp-messenger/id310633997');
-        await launchUrl(appStoreUrl);
-      }
-    }
   }
 
   @override

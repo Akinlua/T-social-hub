@@ -2,22 +2,38 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+    <uses-permission android:name="android.permission.REORDER_TASKS" />
+    <uses-permission android:name="android.permission.MANAGE_ACTIVITY_TASKS" />
+    <uses-permission android:name="android.permission.START_TASKS_FROM_RECENTS" />
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"/>
     
     <application
         android:label="SYNEX"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:enableOnBackInvokedCallback="true">
+        <service
+            android:name=".FloatingNavigationService"
+            android:enabled="true"
+            android:exported="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleInstance"
+            android:excludeFromRecents="false"
             android:documentLaunchMode="intoExisting"
             android:taskAffinity=""
+            android:alwaysRetainTaskState="true"
+            android:stateNotNeeded="false"
+            android:persistableMode="persistAcrossReboots"
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
+            android:resizeableActivity="true"
+            android:supportsPictureInPicture="true"
+            android:documentLaunchMode="always"
+            android:taskAffinity=""
             <!-- Specifies an Android theme to apply to this Activity as soon as
                  the Android process has started. This theme is visible to the user
                  while the Flutter UI initializes. After that, this theme continues

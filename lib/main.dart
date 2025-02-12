@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:letsgo/platform_view.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:letsgo/splash_screen.dart';
+import 'package:letsgo/services/native_app_launcher.dart';
+import 'dart:io';
 
 void main() {
   runApp(const SocialHubApp());
@@ -15,7 +17,7 @@ class SocialHubApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Social Hub',
+      title: 'SYNEX',
       theme: ThemeData(
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
@@ -34,8 +36,21 @@ class SocialHubHome extends StatefulWidget {
 
 class SocialHubHomeState extends State<SocialHubHome> {
   static const String LAST_INDEX_KEY = 'last_platform_index';
+  static const String LAST_APP_STATE_KEY = 'last_app_state';
   int _currentIndex = 0;
   bool _showBars = true;
+  String? _lastOpenedApp;
+  
+  // Define appConfig at class level
+  final Map<String, String> appConfig = {
+    'Twitter/X': 'com.twitter.android',
+    'Facebook': 'com.facebook.katana',
+    'Instagram': 'com.instagram.android',
+    'LinkedIn': 'com.linkedin.android',
+    'WhatsApp': 'com.whatsapp',
+    'Telegram': 'org.telegram.messenger',
+    'TikTok': 'com.zhiliaoapp.musically',
+  };
   
   final List<SocialPlatform> _platforms = [
     SocialPlatform(
@@ -51,18 +66,23 @@ class SocialHubHomeState extends State<SocialHubHome> {
     SocialPlatform(
       name: 'Instagram',
       icon: Icons.camera_alt,
-      color: Color(0xFFE1306C), // Updated Instagram brand color
+      color: Color(0xFFE1306C),
     ),
     SocialPlatform(
       name: 'LinkedIn',
       icon: Icons.work,
       color: Colors.blue.shade900,
     ),
-    // SocialPlatform(
-    //   name: 'WhatsApp',
-    //   icon: Icons.chat,
-    //   color: Color(0xFF25D366), // WhatsApp green
-    // ),
+    SocialPlatform(
+      name: 'WhatsApp',
+      icon: Icons.chat,
+      color: Color(0xFF25D366),
+    ),
+    SocialPlatform(
+      name: 'Telegram',
+      icon: Icons.send,
+      color: Color(0xFF0088cc),
+    ),
     SocialPlatform(
       name: 'TikTok',
       icon: Icons.music_note,
@@ -73,14 +93,20 @@ class SocialHubHomeState extends State<SocialHubHome> {
   @override
   void initState() {
     super.initState();
-    _loadLastIndex();
+    _loadLastState();
   }
 
-  Future<void> _loadLastIndex() async {
+  Future<void> _loadLastState() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _currentIndex = prefs.getInt(LAST_INDEX_KEY) ?? 0;
+      _lastOpenedApp = prefs.getString(LAST_APP_STATE_KEY);
     });
+  }
+
+  Future<void> _saveLastState(String packageName) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(LAST_APP_STATE_KEY, packageName);
   }
 
   Future<void> _saveLastIndex(int index) async {
@@ -141,59 +167,129 @@ class SocialHubHomeState extends State<SocialHubHome> {
 
   @override
   Widget build(BuildContext context) {
-    // Set status bar style based on platform
-    Color statusBarColor;
-    Brightness iconBrightness;
-    
-    switch (_platforms[_currentIndex].name.toLowerCase()) {
-      case 'facebook':
-      case 'linkedin':
-        statusBarColor = Colors.white;
-        iconBrightness = Brightness.dark;
-        break;
-      case 'twitter/x':
-      case 'instagram':
-      case 'tiktok':
-        statusBarColor = Colors.black;
-        iconBrightness = Brightness.light;
-        break;
-      default:
-        statusBarColor = Colors.white;
-        iconBrightness = Brightness.dark;
-    }
-
-    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
-      statusBarColor: statusBarColor,
-      statusBarIconBrightness: iconBrightness,
-      statusBarBrightness: iconBrightness == Brightness.dark ? Brightness.light : Brightness.dark,
-    ));
-
     return Scaffold(
-      appBar: _showBars ? AppBar(
-        title: Text(_platforms[_currentIndex].name),
-        backgroundColor: _platforms[_currentIndex].color,
-        foregroundColor: Colors.white,
-      ) : null,
-      body: PlatformView(
-        platformName: _platforms[_currentIndex].name,
+      appBar: AppBar(
+        title: const Text(
+          'SYNEX',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 22,
+          ),
+        ),
+        backgroundColor: Colors.black87,
+        elevation: 0,
       ),
-      bottomNavigationBar: _showBars ? BottomNavigationBar(
-        currentIndex: _currentIndex,
-        selectedItemColor: _platforms[_currentIndex].color,
-        unselectedItemColor: Colors.grey,
-        type: BottomNavigationBarType.fixed,
-        onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-          _saveLastIndex(index);
+      body: GridView.builder(
+        padding: const EdgeInsets.all(16),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          childAspectRatio: 1,
+          crossAxisSpacing: 16,
+          mainAxisSpacing: 16,
+        ),
+        itemCount: _platforms.length,
+        itemBuilder: (context, index) {
+          final platform = _platforms[index];
+          final packageName = appConfig[platform.name];
+          
+          return FutureBuilder<ImageProvider>(
+            future: getNativeAppIcon(packageName ?? ''),
+            builder: (context, snapshot) {
+              return GestureDetector(
+                onTap: () => _launchApp(platform.name),
+                child: Card(
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          platform.color,
+                          platform.color.withOpacity(0.8),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        snapshot.hasData
+                            ? Image(
+                                image: snapshot.data!,
+                                width: 48,
+                                height: 48,
+                              )
+                            : Icon(
+                                platform.icon,
+                                size: 48,
+                                color: Colors.white,
+                              ),
+                        const SizedBox(height: 8),
+                        Text(
+                          platform.name,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
         },
-        items: _platforms.map((platform) => BottomNavigationBarItem(
-          icon: Icon(platform.icon),
-          label: platform.name,
-        )).toList(),
-      ) : null,
+      ),
     );
+  }
+
+  void _launchApp(String platformName) async {
+    final packageName = appConfig[platformName];
+    if (packageName != null) {
+      try {
+        const platform = MethodChannel('com.example.letsgo/app_launcher');
+        final bool result = await platform.invokeMethod('launchApp', {
+          'packageName': packageName,
+        });
+        if (result) {
+          _saveLastState(packageName);
+          _saveLastIndex(_platforms.indexWhere((p) => p.name == platformName));
+        }
+      } catch (e) {
+        print('Failed to launch app: $e');
+      }
+    }
+  }
+
+  Future<ImageProvider> getNativeAppIcon(String packageName) async {
+    try {
+      const platform = MethodChannel('com.example.letsgo/app_icons');
+      final String? iconPath = await platform.invokeMethod('getAppIcon', {
+        'packageName': packageName,
+      });
+      if (iconPath != null) {
+        return FileImage(File(iconPath));
+      }
+    } catch (e) {
+      print('Failed to load native icon: $e');
+    }
+    return _getDefaultIcon(packageName);
+  }
+
+  AssetImage _getDefaultIcon(String packageName) {
+    final iconMap = {
+      'com.twitter.android': 'assets/icons/twitter.png',
+      'com.facebook.katana': 'assets/icons/facebook.png',
+      // Add other default icons
+    };
+    return AssetImage(iconMap[packageName] ?? 'assets/icons/default.png');
   }
 }
 

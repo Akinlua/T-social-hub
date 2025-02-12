@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="120"
+    android:viewportHeight="120">
+    
+    <!-- Background Circle -->
+    <path
+        android:fillColor="#0066CC"
+        android:pathData="M60,0A60,60 0 1,1 60,120A60,60 0 1,1 60,0"/>
+    
+    <!-- Social Network Icon -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M40,40 L80,40 L80,80 L40,80Z
+        M45,45 L75,45 L75,75 L45,75Z
+        M50,50 L70,50 L70,70 L50,70Z"/>
+</vector> 
